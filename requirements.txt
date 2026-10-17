@@ -1,0 +1,9 @@
+streamlit>=1.40
+fastapi>=0.110
+uvicorn>=0.29
+sqlglot>=25
+faker>=24
+psycopg[binary]>=3.1
+pandas
+pytest
+httpx
