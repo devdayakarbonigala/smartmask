@@ -1,0 +1,11 @@
+[tool.ruff]
+line-length = 130
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+# long lines are SQL text and UI strings; the formatter handles code layout
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

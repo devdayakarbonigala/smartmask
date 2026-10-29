@@ -1,6 +1,4 @@
 import hashlib
-import os
-import sqlite3
 
 import pytest
 
@@ -75,15 +73,18 @@ def test_cte_and_union(eng):
     assert "***" in r.rows[0][0]
 
 
-@pytest.mark.parametrize("sql", [
-    "SELECT * FROM cards WHERE card_number LIKE '4111%'",
-    "SELECT card_id FROM cards ORDER BY card_number",
-    "SELECT customer_id FROM customers WHERE ssn = '123-45-6789'",
-    "SELECT a.account_id FROM accounts a WHERE a.balance > 1000",
-    "SELECT customer_id FROM customers GROUP BY customer_id HAVING MAX(ssn) > '5'",
-    "SELECT (SELECT 1 FROM cards k WHERE k.card_number = c.ssn) FROM customers c",
-    "SELECT 1 FROM cards JOIN customers ON cards.card_number = customers.ssn",
-])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT * FROM cards WHERE card_number LIKE '4111%'",
+        "SELECT card_id FROM cards ORDER BY card_number",
+        "SELECT customer_id FROM customers WHERE ssn = '123-45-6789'",
+        "SELECT a.account_id FROM accounts a WHERE a.balance > 1000",
+        "SELECT customer_id FROM customers GROUP BY customer_id HAVING MAX(ssn) > '5'",
+        "SELECT (SELECT 1 FROM cards k WHERE k.card_number = c.ssn) FROM customers c",
+        "SELECT 1 FROM cards JOIN customers ON cards.card_number = customers.ssn",
+    ],
+)
 def test_probing_predicates_denied_for_masked_roles(eng, sql):
     with pytest.raises(PolicyViolation):
         eng.execute("analyst", sql)
@@ -95,11 +96,21 @@ def test_admin_may_filter(eng):
     assert eng.execute("admin", "SELECT card_id FROM cards WHERE card_number LIKE '4%' LIMIT 1")
 
 
-@pytest.mark.parametrize("sql", [
-    "DELETE FROM cards", "UPDATE cards SET card_number='x'", "DROP TABLE cards", "INSERT INTO cards VALUES (1)",
-    "SELECT 1; SELECT 2", "SELECT pg_sleep(1)", "SELECT * FROM pg_user", "SELECT * FROM sqlite_master",
-    "SELECT load_extension('x')", "SELECT * FROM information_schema.tables",
-])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DELETE FROM cards",
+        "UPDATE cards SET card_number='x'",
+        "DROP TABLE cards",
+        "INSERT INTO cards VALUES (1)",
+        "SELECT 1; SELECT 2",
+        "SELECT pg_sleep(1)",
+        "SELECT * FROM pg_user",
+        "SELECT * FROM sqlite_master",
+        "SELECT load_extension('x')",
+        "SELECT * FROM information_schema.tables",
+    ],
+)
 def test_dangerous_statements_denied_for_every_role(eng, sql):
     for role in ("admin", "support", "analyst"):
         with pytest.raises(PolicyViolation):
@@ -124,6 +135,7 @@ def test_underlying_data_untouched_and_db_is_readonly(eng):
     def checksum():
         _, rows, _ = eng.adapter.execute("SELECT card_id, card_number FROM cards ORDER BY card_id", 10_000)
         return hashlib.sha256(repr(rows).encode()).hexdigest()
+
     before = checksum()
     for role in ("admin", "support", "analyst"):
         eng.execute(role, "SELECT * FROM cards")
@@ -144,7 +156,7 @@ def test_backend_parity(tmp_path):
         ad = SqliteAdapter(config.SQLITE_PATH) if b == "sqlite" else PostgresAdapter(config.PG_DSN)
         e = MaskingEngine(ad, MetaStore(str(tmp_path / f"{b}.db")), Policy(), "test-salt")
         e.run_scan()
-        q = "SELECT customer_id, full_name, email, phone, ssn, aadhaar_no, pan_no, date_of_birth FROM customers ORDER BY customer_id LIMIT 25"
+        q = "SELECT customer_id, full_name, email, phone, ssn, aadhaar_no, pan_no, date_of_birth, support_note FROM customers ORDER BY customer_id LIMIT 25"
         for role in ("support", "analyst"):
             out[(b, role)] = e.execute(role, q).rows
     for role in ("support", "analyst"):
@@ -165,3 +177,11 @@ def test_override_can_fix_a_miss(tmp_path):
     e.store.set_override(e.db_key, "cards", "credit_limit", "NONE")
     r = e.execute("support", "SELECT reference_no, credit_limit FROM transactions t JOIN cards c ON 1=1 LIMIT 1")
     assert r.rows[0][0].startswith("****") and r.rows[0][1] is not None
+
+
+def test_free_text_note_is_scrubbed_on_every_backend(eng):
+    q = "SELECT support_note FROM customers"
+    raw = " ".join(r[0] for r in eng.execute("admin", q).rows)
+    support = " ".join(r[0] for r in eng.execute("support", q).rows)
+    assert "@" in raw and "[PAN]" not in raw
+    assert "@" not in support and "[PAN]" in support

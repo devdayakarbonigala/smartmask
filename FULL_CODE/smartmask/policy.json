@@ -1,0 +1,45 @@
+{
+  "roles": {
+    "admin": {
+      "description": "Full view of raw values",
+      "default": "none",
+      "rules": {}
+    },
+    "support": {
+      "description": "Partial masking so staff can verify a customer without seeing full values",
+      "default": "redact",
+      "rules": {
+        "CARD": "partial",
+        "SSN": "partial",
+        "AADHAAR": "partial",
+        "PAN": "partial",
+        "EMAIL": "partial",
+        "PHONE": "partial",
+        "DOB": "partial",
+        "NAME": "partial",
+        "ACCOUNT_NO": "partial",
+        "BALANCE": "redact",
+        "ADDRESS": "partial",
+        "FREETEXT": "scrub"
+      }
+    },
+    "analyst": {
+      "description": "Hashed identifiers (joins still work) and redacted amounts",
+      "default": "redact",
+      "rules": {
+        "CARD": "hash",
+        "SSN": "hash",
+        "AADHAAR": "hash",
+        "PAN": "hash",
+        "EMAIL": "hash",
+        "PHONE": "hash",
+        "ACCOUNT_NO": "hash",
+        "NAME": "hash",
+        "DOB": "redact",
+        "BALANCE": "redact",
+        "ADDRESS": "redact",
+        "FREETEXT": "scrub"
+      }
+    }
+  }
+}

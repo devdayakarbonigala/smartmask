@@ -1,4 +1,5 @@
 """CLI: python -m smartmask.cli --backend sqlite --role support "SELECT * FROM cards LIMIT 3" """
+
 import argparse
 import sys
 

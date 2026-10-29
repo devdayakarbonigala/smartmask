@@ -1,71 +1,108 @@
-# SmartMask
+# SmartMask: Smart Data Masking System for PII Protection
 
-Role-based dynamic data masking for PII. Built for the Talent AP Mega Hackathon, problem statement 11 (BFSI): *Smart Data Masking System for PII Protection*.
+Team METIS (TEAM-000682), Talent AP Mega Hackathon 2026. Problem 11, BFSI (B1).
 
-SmartMask connects to a database, scans the schema and a row sample to tag sensitive columns, and masks those columns **at query time** according to the role that is asking. The stored tables are never modified.
+SmartMask connects to a database, scans the schema and a row sample to tag sensitive columns, and masks them
+**at query time** for the role that is asking. The stored tables are never modified.
 
-| Role | `card_number` | `ssn` | `balance` |
-|---|---|---|---|
-| admin | 4111-1111-1111-1111 | 123-45-6789 | 84250.00 |
-| support | 4111-XXXX-XXXX-1111 | XXX-XX-6789 | NULL (shown as [REDACTED]) |
-| analyst | salted SHA-256 token | salted SHA-256 token | NULL (shown as [REDACTED]) |
+| Role | `card_number` | `ssn` | `balance` | free text (notes, narration, JSON) |
+|---|---|---|---|---|
+| admin | raw | raw | raw | raw |
+| support | first 4 and last 4 digits | last 4 digits | redacted | identifiers replaced with `[PAN]`, `[PHONE]`, `[EMAIL]` ... |
+| analyst | salted hash token | salted hash token | redacted | same replacement as support |
 
-## What is in the box
+## What it does
 
-| Brief requirement | Where |
-|---|---|
-| Automated PII scanner (regex and rules, tags such as `PII_HIGH`, `FINANCIAL_CONFIDENTIAL`) | `smartmask/scanner.py`, `smartmask/checks.py` |
-| Dynamic masking engine, two database backends (PostgreSQL and SQLite), redaction, partial masking, hashing | `smartmask/engine.py`, `smartmask/masks.py`, `smartmask/adapters.py` |
-| Interactive demonstration where roles are toggled and underlying tables stay intact | `app.py` (Streamlit), `smartmask/cli.py`, `smartmask/api.py` (FastAPI) |
+* **Scanner** (`smartmask/scanner.py`, `checks.py`, `scrub.py`): column-name hints plus value checks (regex, Luhn,
+  Verhoeff). Tags `PII_HIGH`, `PII_MEDIUM` and `FINANCIAL_CONFIDENTIAL`. Text columns that hide identifiers inside
+  sentences or JSON are tagged `FREETEXT`.
+* **Masking engine** (`engine.py`, `masks.py`, `adapters.py`): the query is parsed with `sqlglot`, protected columns in
+  the projection are replaced by masking SQL in the backend's own dialect (redaction, partial masking, hashing,
+  free-text scrubbing). The database does the masking, so raw values never leave it for a restricted role.
+  Backends: PostgreSQL and SQLite, with identical output (checked on every row of the organisers' dataset).
+* **Interfaces**: Streamlit demo (`app.py`), CLI (`smartmask/cli.py`), FastAPI (`smartmask/api.py`).
 
-How it works: the query is parsed with `sqlglot`, columns are resolved to base tables (aliases, joins, CTEs, subqueries, `SELECT *`), and each protected column in the projection is replaced by a masking expression written in the backend's own SQL. The database does the masking, so raw values never leave it for a restricted role.
+Safety rules in the engine:
 
-Safety rules enforced by the engine:
+* One statement, `SELECT` only. Unknown functions and tables outside the scanned schema are rejected.
+* A role that sees a masked value may not filter, join, group or sort on that column (no `WHERE card_number LIKE '4111%'`).
+* Read-only connections (SQLite `mode=ro`; PostgreSQL read-only transaction and a SELECT-only user).
+* A column tagged with an entity the role has no rule for is redacted.
+* **Fail closed**: if the schema scan fails, the query is refused rather than served unmasked.
+* Tags, overrides and the audit log live in a separate metadata file, never in the protected database.
 
-* One statement, `SELECT` only. Unknown or system functions and tables outside the scanned schema are rejected.
-* A role that sees a masked value may not filter, join, group or sort on that column, so values cannot be guessed with `WHERE card_number LIKE '4111%'`.
-* Both adapters open read-only connections (SQLite `mode=ro`, PostgreSQL read-only transaction and a SELECT-only database user).
-* A column tagged with an entity that a role has no rule for is redacted by default.
-* Tags, manual overrides and the audit log live in a separate metadata file, never in the protected database.
+## How to run
 
-## Run it
+Python 3.11 or newer.
 
 ```bash
-pip install -r requirements.txt
-python -m smartmask.seed                       # synthetic bank data -> data/bank.db
-export SMARTMASK_PG_ADMIN_DSN="host=localhost port=5433 dbname=postgres user=postgres"   # optional, loads PostgreSQL too
-python -m smartmask.seed
-streamlit run app.py                           # demo UI
+cd FULL_CODE
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+cp .env.example .env && set -a && source .env && set +a
+
+# Option A: synthetic demo data
+python -m smartmask.seed                    # creates data/bank.db (add SMARTMASK_PG_ADMIN_DSN to load PostgreSQL too)
+
+# Option B: the organisers' Saffron Bank pack
+export SMARTMASK_SQLITE=/path/to/saffron_bank.db
+# PostgreSQL: start the pack's docker-compose database and set SMARTMASK_PG_DSN to a read-only user
+
+streamlit run app.py                        # demo UI (choose backend and role in the sidebar)
 python -m smartmask.cli --role support --show-sql "SELECT card_number FROM cards LIMIT 3"
-uvicorn smartmask.api:app --port 8000          # API docs at /docs
-python -m pytest -q tests                      # 60 tests
-python -m smartmask.benchmark                  # scanner accuracy on a labelled schema
+uvicorn smartmask.api:app --port 8000       # API docs at /docs
 ```
 
-PostgreSQL connection for the app comes from `SMARTMASK_PG_DSN` (default: `host=localhost port=5433 dbname=postgres user=smartmask_app`).
+## How to run the tests
+
+```bash
+cd FULL_CODE
+python -m pytest -q tests                   # 68 tests on SQLite only
+# with PostgreSQL available (set SMARTMASK_PG_ADMIN_DSN, SMARTMASK_PG_DSN, run python -m smartmask.seed first): 98 tests
+ruff check . && ruff format --check .
+python -m smartmask.benchmark               # scanner accuracy on a synthetic labelled schema
+python -m smartmask.benchmark_saffron path/to/saffron_bank.db
+```
+
+## Architecture
+
+```
+query + role -> parse and qualify (sqlglot) -> deny probing / non-SELECT -> replace protected columns
+             -> run on read-only connection (PostgreSQL or SQLite) -> masked rows + audit entry
+scan:  schema + sample -> name hints + validators -> tags (metadata store, keyed by backend and schema)
+policy: smartmask/policy.json maps role x entity -> mask (none, partial, hash, redact, scrub)
+```
 
 ## Measured results
 
-Scanner benchmark: a self-built labelled schema of 63 synthetic columns (30 sensitive, 33 decoys).
-
-| Measure | Result |
+| Check | Result |
 |---|---|
-| Precision | 96% (24 of 25 tagged columns were correct) |
-| Recall | 80% (24 of 30 sensitive columns found) |
-| Entity accuracy on hits | 100% |
-| Clearly named sensitive columns | 16 of 16 found |
-| Cryptically named columns with distinctive values | 8 of 8 found |
-| Cryptic name and no distinctive value pattern | 0 of 6 found (by design, fixable with a manual override) |
-| False positive | `balance_sheet_year` (integer column whose name contains "balance") |
+| Saffron pack, 120 columns, 35 sensitive columns labelled by us | 35 of 35 found, no false positives |
+| Synthetic labelled schema, 63 columns | precision 96%, recall 80%, entity accuracy 100% |
+| SQLite vs PostgreSQL output on the Saffron pack (129,260 rows, support and analyst roles) | identical on all tables |
 
-The benchmark was written by the same author as the scanner, so treat it as a regression check and not as an independent accuracy claim. Free-text columns that contain PII inside sentences are out of scope.
+Both benchmarks were labelled by the same people who tuned the scanner, so they are regression checks and not
+independent accuracy claims.
 
-## Known limitations
+## AI usage
 
-* Strict by design: analysts cannot filter on a protected column even for legitimate analytics.
-* Hash tokens use a deployment-wide salt, so identical values give identical tokens (joins work). Change `SMARTMASK_SALT` and keep it secret.
-* Not a certified GDPR or HIPAA control. All demo data is synthetic.
+This project was built with the help of an AI coding assistant (Claude). The idea selection, review, testing and
+submission are the team's.
 
-## AI assistance disclosure
+## Pre-built and third-party code
 
-This project was built with the help of an AI coding assistant (Claude). The idea selection, review and submission are the author's.
+SmartMask was written for this hackathon. It uses these open-source libraries (pinned in `FULL_CODE/requirements.txt`):
+streamlit, fastapi, uvicorn, sqlglot, faker, psycopg, pandas. Dev tools: pytest, httpx, ruff. All demo data is
+synthetic and generated by `smartmask/seed.py`. The Saffron Bank pack belongs to the organisers and is not included.
+
+## Limitations
+
+* Strict by design: analysts cannot filter on a protected column, even for legitimate analytics.
+* Hash tokens use one deployment-wide salt (identical values give identical tokens, so joins work). Set `SMARTMASK_SALT`.
+* Free-text scrubbing is rule based. Card numbers are recognised by shape inside SQL (no Luhn check there), so some
+  13 to 19 digit reference numbers in free-text columns may also be replaced.
+* City, state, pincode and gender are quasi-identifiers and are not masked. Branch contact columns are treated as
+  business data. Amount columns (`amount_inr`) are not tagged as sensitive.
+* Cryptically named columns with no distinctive value pattern need a manual override.
+* MySQL is not supported.
+* Not a certified GDPR or HIPAA control.

@@ -1,4 +1,5 @@
 """SmartMask demo. Run: streamlit run app.py"""
+
 import hashlib
 import json
 
@@ -9,21 +10,11 @@ from smartmask import benchmark, config
 from smartmask.adapters import PostgresAdapter, SqliteAdapter
 from smartmask.engine import MaskingEngine, PolicyViolation
 from smartmask.policy import Policy
+from smartmask.samples import samples_for
 from smartmask.scanner import TAGS
 from smartmask.store import MetaStore
 
 st.set_page_config(page_title="SmartMask", layout="wide")
-
-SAMPLES = {
-    "Contact details": "SELECT customer_id, full_name, email, phone, date_of_birth FROM customers ORDER BY customer_id LIMIT 8",
-    "Government IDs": "SELECT customer_id, ssn, aadhaar_no, pan_no FROM customers ORDER BY customer_id LIMIT 8",
-    "Cards joined to customers": "SELECT c.full_name, k.card_number, k.credit_limit FROM customers c JOIN cards k ON k.customer_id = c.customer_id ORDER BY c.customer_id, k.card_id LIMIT 8",
-    "Account balances": "SELECT account_number, account_type, balance FROM accounts ORDER BY account_id LIMIT 8",
-    "Analytics by account type": "SELECT account_type, COUNT(*) AS accounts, AVG(balance) AS avg_balance FROM accounts GROUP BY account_type",
-    "SELECT * on customers": "SELECT * FROM customers ORDER BY customer_id LIMIT 5",
-    "Probe attempt (should be denied)": "SELECT customer_id FROM cards WHERE card_number LIKE '4111%'",
-    "Write attempt (should be denied)": "DELETE FROM cards WHERE card_id = 1",
-}
 
 
 @st.cache_resource
@@ -50,8 +41,13 @@ with st.sidebar:
     backend = st.radio("Database backend", ["SQLite", "PostgreSQL"], key="backend")
     role = st.radio("Querying role", ["admin", "support", "analyst"], index=1, key="role")
     user = st.text_input("User name (for the audit log)", "demo.user")
-    st.caption({"admin": "Sees raw values.", "support": "Sees partially masked values.",
-                "analyst": "Sees hashed identifiers and redacted amounts."}[role])
+    st.caption(
+        {
+            "admin": "Sees raw values.",
+            "support": "Sees partially masked values.",
+            "analyst": "Sees hashed identifiers and redacted amounts.",
+        }[role]
+    )
     st.caption("All data is synthetic.")
 
 try:
@@ -60,12 +56,17 @@ except Exception as e:
     st.error(f"Could not connect to {backend}: {e}")
     st.stop()
 
+SAMPLES = samples_for(eng.schema())
+
 st.title("SmartMask")
-st.write("Role-based dynamic data masking. Raw tables are never changed: the mask is applied inside the "
-         "database as part of each query, according to the role that asked.")
+st.write(
+    "Role-based dynamic data masking. Raw tables are never changed: the mask is applied inside the "
+    "database as part of each query, according to the role that asked."
+)
 
 tab_q, tab_cmp, tab_scan, tab_pol, tab_audit, tab_proof, tab_about = st.tabs(
-    ["Query", "Same query, three roles", "Scanner", "Policy", "Audit log", "Proof", "About"])
+    ["Query", "Same query, three roles", "Scanner", "Policy", "Audit log", "Proof", "About"]
+)
 
 with tab_q:
     pick = st.selectbox("Sample query", list(SAMPLES), key="sample")
@@ -97,13 +98,18 @@ with tab_cmp:
                 st.error(f"Denied: {e}")
 
 with tab_scan:
-    st.write("The scanner reads column names and a row sample (regex plus Luhn and Verhoeff checksums) and tags sensitive fields.")
+    st.write(
+        "The scanner reads column names and a row sample (regex plus Luhn and Verhoeff checksums) and tags sensitive fields, including identifiers hidden inside free text."
+    )
     if st.button("Re-scan schema", key="rescan"):
         with st.spinner("Scanning"):
             eng.run_scan()
     tags = eng.store.load_tags(eng.db_key)
-    st.dataframe(pd.DataFrame([t.as_dict() for t in tags.values()]).sort_values(["table", "column"]) if tags else pd.DataFrame(),
-                 use_container_width=True, hide_index=True)
+    st.dataframe(
+        pd.DataFrame([t.as_dict() for t in tags.values()]).sort_values(["table", "column"]) if tags else pd.DataFrame(),
+        use_container_width=True,
+        hide_index=True,
+    )
     st.subheader("Manual override")
     schema = eng.schema()
     c1, c2, c3 = st.columns(3)
@@ -124,7 +130,9 @@ with tab_scan:
         st.write(f"By group (correct / total): {r['by_group']}")
         st.write(f"Missed ({len(r['misses'])}): " + ", ".join(f"{c} ({e})" for c, e, _ in r["misses"]))
         st.write(f"False positives ({len(r['false_positives'])}): " + (", ".join(c for c, _ in r["false_positives"]) or "none"))
-        st.caption("Self-built benchmark of synthetic columns. Misses are columns with a cryptic name and no distinctive value pattern; a manual override fixes them.")
+        st.caption(
+            "Self-built benchmark of synthetic columns. Misses are columns with a cryptic name and no distinctive value pattern; a manual override fixes them."
+        )
 
 with tab_pol:
     pol = Policy()
@@ -134,15 +142,22 @@ with tab_pol:
 
 with tab_audit:
     rows = eng.store.audit_rows(200)
-    st.dataframe(pd.DataFrame(rows, columns=["time", "user", "role", "status", "sql", "masked columns", "rows", "detail"]),
-                 use_container_width=True, hide_index=True)
+    st.dataframe(
+        pd.DataFrame(rows, columns=["time", "user", "role", "status", "sql", "masked columns", "rows", "detail"]),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 with tab_proof:
-    st.write("Fingerprint of the raw cards table before and after running every role, plus a direct write attempt against the database.")
+    st.write(
+        "Fingerprint of the raw cards table before and after running every role, plus a direct write attempt against the database."
+    )
     if st.button("Run proof", key="proof"):
+
         def fp():
-            _, rows, _ = eng.adapter.execute("SELECT card_id, card_number FROM cards ORDER BY card_id", 100000)
+            _, rows, _ = eng.adapter.execute("SELECT * FROM cards ORDER BY 1", 100000)
             return hashlib.sha256(repr(rows).encode()).hexdigest()[:20]
+
         before = fp()
         for r in ("admin", "support", "analyst"):
             eng.execute(r, "SELECT * FROM cards", "proof")
@@ -151,15 +166,17 @@ with tab_proof:
         st.write(f"After: `{after}`")
         st.write("Unchanged." if before == after else "CHANGED")
         try:
-            eng.adapter.raw_execute_for_test("UPDATE cards SET card_number='0000' WHERE card_id=1")
+            eng.adapter.raw_execute_for_test("DELETE FROM cards WHERE 1 = 0")
             st.error("Write succeeded (unexpected)")
         except Exception as e:
             st.write(f"Direct write attempt blocked by the database: {str(e).splitlines()[0]}")
 
 with tab_about:
     st.subheader("Terms and privacy")
-    st.write("This is a hackathon prototype. Every record shown is synthetic and generated by a script; no real customer data is used. "
-             "The audit log and scanner tags are stored locally in a separate metadata file, not in the protected database. "
-             "The software is provided as is, without warranty, and is not certified for GDPR or HIPAA compliance.")
+    st.write(
+        "This is a hackathon prototype. Every record shown is synthetic and generated by a script; no real customer data is used. "
+        "The audit log and scanner tags are stored locally in a separate metadata file, not in the protected database. "
+        "The software is provided as is, without warranty, and is not certified for GDPR or HIPAA compliance."
+    )
     st.subheader("AI assistance")
     st.write("Built with assistance from an AI coding tool. See the README for the disclosure.")

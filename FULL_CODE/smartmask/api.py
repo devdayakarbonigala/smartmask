@@ -1,4 +1,5 @@
 """Small FastAPI surface (Postman-friendly). Run: uvicorn smartmask.api:app --port 8000"""
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -60,5 +61,11 @@ def query_endpoint(q: QueryIn):
         raise HTTPException(400, str(e))
     except PolicyViolation as e:
         raise HTTPException(403, str(e))
-    return {"role": r.role, "columns": r.columns, "rows": r.rows, "masked": r.masked,
-            "rewritten_sql": r.rewritten_sql, "truncated": r.truncated}
+    return {
+        "role": r.role,
+        "columns": r.columns,
+        "rows": r.rows,
+        "masked": r.masked,
+        "rewritten_sql": r.rewritten_sql,
+        "truncated": r.truncated,
+    }

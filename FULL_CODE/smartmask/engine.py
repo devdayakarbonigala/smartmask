@@ -8,8 +8,11 @@ Rules enforced:
   * a protected column may NOT be used in WHERE / JOIN / HAVING / ORDER BY / GROUP BY for a masked role,
     because that would let a user probe raw values ("WHERE card_number LIKE '4111%'")
 """
+
 from __future__ import annotations
 
+import hashlib
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -44,8 +47,29 @@ class QueryResult:
 class MaskingEngine:
     def __init__(self, adapter, store: MetaStore, policy: Policy, salt: str = "demo-salt-change-me"):
         self.adapter, self.store, self.policy, self.salt = adapter, store, policy, salt
-        self.db_key = adapter.name.lower()
         self._schema = None
+        self._db_key = None
+        self._tags_ready = False
+
+    @property
+    def db_key(self) -> str:
+        """Backend name plus a fingerprint of the schema, so tags from a different database are never reused."""
+        if self._db_key is None:
+            layout = sorted((t, c, d) for t, cols in self.schema().items() for c, d in cols.items())
+            fp = hashlib.sha1(repr(layout).encode()).hexdigest()[:10]
+            self._db_key = f"{self.adapter.name.lower()}-{fp}"
+        return self._db_key
+
+    def _ensure_tags(self):
+        """Fail closed: never serve data without a completed scan for this exact schema."""
+        if self._tags_ready:
+            return
+        if not self.store.load_tags(self.db_key):
+            try:
+                self.run_scan()
+            except Exception as e:
+                raise PolicyViolation(f"Schema scan failed, refusing to serve unmasked data: {str(e).splitlines()[0]}")
+        self._tags_ready = True
 
     # ---- scanning -------------------------------------------------------------------------
     def run_scan(self, sample_size: int = 200):
@@ -76,11 +100,14 @@ class MaskingEngine:
         if tree.find(exp.Into):
             raise PolicyViolation("SELECT ... INTO is not allowed.")
 
+        self._ensure_tags()
+        self._normalise_identifiers(tree)
         schema = self.schema()
         sg_schema = {t: {c: d for c, d in cols.items()} for t, cols in schema.items()}
         try:
-            tree = qualify(tree, schema=sg_schema, dialect=dialect, quote_identifiers=False,
-                           identify=False, validate_qualify_columns=True)
+            tree = qualify(
+                tree, schema=sg_schema, dialect=dialect, quote_identifiers=False, identify=False, validate_qualify_columns=True
+            )
         except SqlglotError as e:
             raise PolicyViolation(f"Query rejected: {str(e).splitlines()[0]}")
 
@@ -97,6 +124,9 @@ class MaskingEngine:
                 base = self._base_table(scope, col)
                 if base is None:
                     continue
+                real = self.adapter.actual_column(base, col.name.lower())
+                if real and real != col.name:
+                    col.set("this", exp.to_identifier(real, quoted=True))
                 tag = tagmap.get((base, col.name.lower()))
                 if not tag:
                     continue
@@ -105,14 +135,13 @@ class MaskingEngine:
                     continue
                 if not self._in_projection(col):
                     raise PolicyViolation(
-                        f"Role '{role}' may not filter, join, group or sort on protected column "
-                        f"{base}.{col.name} ({tag.tag}).")
+                        f"Role '{role}' may not filter, join, group or sort on protected column {base}.{col.name} ({tag.tag})."
+                    )
                 numeric = is_numeric_type(schema[base].get(col.name.lower(), ""))
                 repl = mask_expression(mask, tag.entity, numeric, dialect, col)
                 if repl is not None:
                     replacements.append((col, repl))
-                    masked.append({"table": base, "column": col.name.lower(), "entity": tag.entity,
-                                   "tag": tag.tag, "mask": mask})
+                    masked.append({"table": base, "column": col.name.lower(), "entity": tag.entity, "tag": tag.tag, "mask": mask})
         for col, repl in replacements:
             col.replace(repl)
         # de-duplicate the report
@@ -123,6 +152,18 @@ class MaskingEngine:
                 seen.add(k)
                 uniq.append(m)
         return tree.sql(dialect=dialect), uniq
+
+    @staticmethod
+    def _normalise_identifiers(tree):
+        """Quoted table and column names ("CARD_NO") are matched case-insensitively against the scanned schema."""
+        for node in tree.find_all(exp.Column, exp.Table):
+            ident = node.this
+            if (
+                isinstance(ident, exp.Identifier)
+                and ident.args.get("quoted")
+                and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", ident.name)
+            ):
+                node.set("this", exp.to_identifier(ident.name.lower(), quoted=False))
 
     @staticmethod
     def _base_table(scope, col: exp.Column):
