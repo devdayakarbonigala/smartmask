@@ -1,4 +1,4 @@
-# SmartMask: Smart Data Masking System for PII Protection
+# TEAM-000682 · B1: SmartMask, Smart Data Masking System for PII Protection
 
 Team METIS (TEAM-000682), Talent AP Mega Hackathon 2026. Problem 11, BFSI (B1).
 

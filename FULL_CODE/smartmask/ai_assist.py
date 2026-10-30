@@ -35,7 +35,7 @@ log = logging.getLogger(__name__)
 
 ENTITIES = ["CARD", "SSN", "AADHAAR", "PAN", "EMAIL", "PHONE", "DOB", "ACCOUNT_NO", "BALANCE", "NAME", "ADDRESS"]
 LABELS = ENTITIES + ["NONE"]
-MIN_PROB = 0.6  # a local-model answer below this is treated as "no opinion"
+MIN_PROB = config.AI_MIN_PROB
 PROMPT_FILE = Path(__file__).parent / "prompts" / "column_classifier.txt"
 
 
@@ -295,7 +295,7 @@ class LlmSignal:
 
 def _post_messages(payload: dict, api_key: str) -> dict:
     req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
+        config.LLM_URL,
         data=json.dumps(payload).encode(),
         headers={"content-type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01"},
     )
@@ -329,8 +329,8 @@ def llm_suggest(table: str, column: str, dtype: str, shapes: list[tuple[str, int
     user = json.dumps({"table": table, "column": column, "data_type": dtype, "value_shapes": [s for s, _ in shapes]})
     payload = {
         "model": config.LLM_MODEL,
-        "max_tokens": 200,
-        "temperature": 0,
+        "max_tokens": config.LLM_MAX_TOKENS,
+        "temperature": config.LLM_TEMPERATURE,
         "system": PROMPT_FILE.read_text(),
         "messages": [{"role": "user", "content": user}],
     }
@@ -422,7 +422,7 @@ def approve(store, db_key: str, review: Review):
 
 
 # ---- optional automatic mode -------------------------------------------------------------------
-AUTO_MIN_PROB = 0.85
+AUTO_MIN_PROB = config.AI_AUTO_MIN_PROB
 
 
 def decision(review: Review) -> tuple[str, str]:
