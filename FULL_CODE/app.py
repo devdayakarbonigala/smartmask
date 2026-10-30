@@ -6,7 +6,7 @@ import json
 import pandas as pd
 import streamlit as st
 
-from smartmask import benchmark, config
+from smartmask import ai_assist, benchmark, config
 from smartmask.adapters import PostgresAdapter, SqliteAdapter
 from smartmask.engine import MaskingEngine, PolicyViolation
 from smartmask.policy import Policy
@@ -56,8 +56,8 @@ st.write(
     "database as part of each query, according to the role that asked."
 )
 
-tab_q, tab_cmp, tab_scan, tab_pol, tab_audit, tab_proof, tab_about = st.tabs(
-    ["Query", "Same query, three roles", "Scanner", "Policy", "Audit log", "Proof", "About"]
+tab_q, tab_cmp, tab_scan, tab_ai, tab_pol, tab_audit, tab_proof, tab_about = st.tabs(
+    ["Query", "Same query, three roles", "Scanner", "AI Assist", "Policy", "Audit log", "Proof", "About"]
 )
 
 with tab_q:
@@ -125,6 +125,40 @@ with tab_scan:
         st.caption(
             "Self-built benchmark of synthetic columns. Misses are columns with a cryptic name and no distinctive value pattern; a manual override fixes them."
         )
+
+with tab_ai:
+    st.write(
+        "A second opinion on the scanner. A small local model reads only column names and value shapes "
+        "(digits become 9, letters become A or a) and votes next to the rules. It never changes a mask by itself: "
+        "a suggestion becomes an override only when you approve it, and masking stays plain SQL."
+    )
+    use_llm = False
+    if ai_assist.llm_enabled():
+        use_llm = st.checkbox(
+            "Also ask the language model about disagreements (sends names and shapes, never values)", key="ai_llm"
+        )
+    else:
+        st.caption("Language model off (no ANTHROPIC_API_KEY set). The local model runs without any network.")
+    if st.button("Run AI review", key="ai_run"):
+        with st.spinner("Reviewing columns"):
+            st.session_state["ai_reviews"] = ai_assist.review_all(eng.adapter, eng.store.load_tags(eng.db_key), use_llm=use_llm)
+    reviews = st.session_state.get("ai_reviews")
+    if reviews:
+        counts = pd.Series([r.verdict for r in reviews]).value_counts()
+        st.write("Verdicts: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
+        queue = [r for r in reviews if r.needs_review]
+        if not queue:
+            st.success("Nothing needs a human decision: no disagreement between the rules and the local model.")
+        for i, r in enumerate(queue):
+            c1, c2 = st.columns([4, 1])
+            c1.write(
+                f"**{r.table}.{r.column}** : rules {r.rules or '-'}, model {r.ml or '-'} ({r.ml_prob:.0%})"
+                + (f", language model {r.llm}" if r.llm else "")
+                + f" : {r.verdict}. {r.note}"
+            )
+            if r.suggestion and c2.button(f"Tag as {r.suggestion}", key=f"ai_ok_{i}"):
+                ai_assist.approve(eng.store, eng.db_key, r)
+                st.success("Saved as a manual override. It applies to the next query.")
 
 with tab_pol:
     pol = Policy()
