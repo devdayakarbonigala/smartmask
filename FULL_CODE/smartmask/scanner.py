@@ -31,9 +31,10 @@ TAGS = {
     "DOB": "PII_MEDIUM",
     "NAME": "PII_MEDIUM",
     "ADDRESS": "PII_MEDIUM",
+    "ZIP": "PII_MEDIUM",  # HIPAA geography identifier
 }
 # Tie-break order when two entities score the same.
-PRIORITY = ["CARD", "SSN", "AADHAAR", "PAN", "EMAIL", "ACCOUNT_NO", "PHONE", "DOB", "BALANCE", "NAME", "ADDRESS"]
+PRIORITY = ["CARD", "SSN", "AADHAAR", "PAN", "EMAIL", "ACCOUNT_NO", "PHONE", "DOB", "BALANCE", "NAME", "ADDRESS", "ZIP"]
 
 NAME_HINTS = {
     "CARD": r"(card_?(no|num|number)|^card$|ccn|cc_?num|credit_?card|debit_?card|(^|_)pan_?card)",
@@ -50,9 +51,10 @@ NAME_HINTS = {
     "BALANCE": r"(balance|(^|_)bal($|_)|salary|income|credit_?limit|net_?worth|outstanding|od_?limit|sanctioned)",
     "ACCOUNT_NO": r"((acct|account)_?(no|num|number)|linked_?acct|iban)",
     "ADDRESS": r"((^|_)(addr|address)_?(line)?_?\d($|_)|(^|_)(us|home|resid\w*|postal|mailing)_?(addr|address)($|_)|^address$)",
+    "ZIP": r"(^|_)zip(_?code)?($|_)",
 }
 NUMERIC_ONLY = {"BALANCE"}
-HINT_REQUIRED = {"DOB", "NAME", "BALANCE", "ACCOUNT_NO", "ADDRESS"}  # no distinctive value pattern
+HINT_REQUIRED = {"DOB", "NAME", "BALANCE", "ACCOUNT_NO", "ADDRESS", "ZIP"}  # no distinctive value pattern
 # Business contact columns (a branch's own phone or e-mail) are not personal data.
 BUSINESS_PREFIXES = ("branch_",)
 
@@ -105,6 +107,10 @@ def _v_addr(s, hint):
     return len(s) >= 4 and bool(re.search(r"[A-Za-z]", s))
 
 
+def _v_zip(s, hint):
+    return bool(re.fullmatch(r"\d{5}(-\d{4})?", s))
+
+
 def _v_ssn(s, hint):
     return bool(_ssn.match(s)) or (hint and bool(_ssn_plain.match(s)))
 
@@ -139,6 +145,7 @@ VALIDATORS: dict[str, Callable[[str, bool], bool]] = {
     "ACCOUNT_NO": _v_acct,
     "NAME": _v_name,
     "ADDRESS": _v_addr,
+    "ZIP": _v_zip,
 }
 
 

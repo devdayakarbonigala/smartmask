@@ -13,6 +13,7 @@ MAPPING = {
     "PHONE": ("Personal data (Art. 4(1))", "D telephone numbers"),
     "EMAIL": ("Personal data, online identifier (Art. 4(1))", "F email addresses"),
     "DOB": ("Personal data (Art. 4(1))", "C dates related to an individual"),
+    "ZIP": ("Personal data, location (Art. 4(1))", "B geographic subdivisions below state"),
     "SSN": ("National identification number (Art. 87)", "G social security numbers"),
     "AADHAAR": ("National identification number (Art. 87)", "R other unique identifying number"),
     "PAN": ("Tax identification number (Art. 87)", "R other unique identifying number"),

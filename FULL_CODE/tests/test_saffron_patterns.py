@@ -227,3 +227,21 @@ def test_mixed_card_content_needs_mostly_valid_card_numbers():
     random_refs = [f"{i:016d}" for i in range(1000000000000000, 1000000000000040)]  # most fail Luhn
     assert not scanner._mixed_card_content(random_refs)
     assert scanner._mixed_card_content(CARDS * 2 + ["UTRAB0000000001"])
+
+
+# ---- HIPAA geography identifier: US ZIP codes --------------------------------------------------
+def test_us_zip_is_masked_but_indian_pincode_is_not(tmp_path):
+    path = str(tmp_path / "zip.db")
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE intl (cust_id TEXT, us_zip TEXT, pincode TEXT)")
+    for i in range(30):
+        con.execute("INSERT INTO intl VALUES (?,?,?)", (f"C{i}", f"{94000 + i}", f"{522000 + i}"))
+    con.commit()
+    con.close()
+    eng = MaskingEngine(SqliteAdapter(path), MetaStore(str(tmp_path / "m.db")), Policy(), "s")
+    eng.run_scan()
+    tags = {t.column: t.entity for t in eng.store.load_tags(eng.db_key).values()}
+    assert tags.get("us_zip") == "ZIP" and "pincode" not in tags
+    assert eng.execute("admin", "SELECT us_zip FROM intl ORDER BY cust_id LIMIT 1").rows[0][0] == "94000"
+    assert eng.execute("support", "SELECT us_zip FROM intl ORDER BY cust_id LIMIT 1").rows[0][0] == "940**"
+    assert eng.execute("analyst", "SELECT us_zip FROM intl ORDER BY cust_id LIMIT 1").rows[0][0] == "[REDACTED]"

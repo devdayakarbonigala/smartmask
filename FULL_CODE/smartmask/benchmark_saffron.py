@@ -30,6 +30,7 @@ SENSITIVE: dict[tuple[str, str], str] = {
     ("international_customers", "ssn"): "SSN",
     ("international_customers", "us_addr"): "ADDRESS",
     ("international_customers", "us_phone"): "PHONE",
+    ("international_customers", "us_zip"): "ZIP",
     ("accounts", "account_no"): "ACCOUNT_NO",
     ("accounts", "curr_bal"): "BALANCE",
     ("accounts", "od_limit_inr"): "BALANCE",

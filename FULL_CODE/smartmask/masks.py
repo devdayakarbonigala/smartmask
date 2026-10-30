@@ -31,6 +31,8 @@ def _partial(entity: str, dialect: str) -> str:
         return f"SUBSTR({t}, 1, 1) || '***'"
     if entity == "ADDRESS":
         return f"SUBSTR({t}, 1, 3) || '***'"
+    if entity == "ZIP":
+        return f"SUBSTR({t}, 1, 3) || '**'"  # HIPAA safe harbour keeps at most the first three digits
     if entity in ("PAN", "PHONE"):
         return f"'******' || {LAST4}"
     return f"'****' || {LAST4}"  # ACCOUNT_NO and any other entity

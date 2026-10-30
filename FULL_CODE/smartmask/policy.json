@@ -20,7 +20,8 @@
         "ACCOUNT_NO": "partial",
         "BALANCE": "redact",
         "ADDRESS": "partial",
-        "FREETEXT": "scrub"
+        "FREETEXT": "scrub",
+        "ZIP": "partial"
       }
     },
     "analyst": {
@@ -38,7 +39,8 @@
         "DOB": "redact",
         "BALANCE": "redact",
         "ADDRESS": "redact",
-        "FREETEXT": "scrub"
+        "FREETEXT": "scrub",
+        "ZIP": "redact"
       }
     }
   }
