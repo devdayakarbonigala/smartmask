@@ -41,14 +41,6 @@ with st.sidebar:
     backend = st.radio("Database backend", ["SQLite", "PostgreSQL"], key="backend")
     role = st.radio("Querying role", ["admin", "support", "analyst"], index=1, key="role")
     user = st.text_input("User name (for the audit log)", "demo.user")
-    st.caption(
-        {
-            "admin": "Sees raw values.",
-            "support": "Sees partially masked values.",
-            "analyst": "Sees hashed identifiers and redacted amounts.",
-        }[role]
-    )
-    st.caption("All data is synthetic.")
 
 try:
     eng = get_engine(backend)
