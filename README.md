@@ -57,8 +57,8 @@ uvicorn smartmask.api:app --port 8000       # API docs at /docs
 
 ```bash
 cd FULL_CODE
-python -m pytest -q tests                   # 68 tests on SQLite only
-# with PostgreSQL available (set SMARTMASK_PG_ADMIN_DSN, SMARTMASK_PG_DSN, run python -m smartmask.seed first): 98 tests
+python -m pytest -q tests                   # creates data/bank.db on first run; SQLite only
+# with PostgreSQL available (set SMARTMASK_PG_ADMIN_DSN and SMARTMASK_PG_DSN, run python -m smartmask.seed first): also runs the PostgreSQL variants
 ruff check . && ruff format --check .
 python -m smartmask.benchmark               # scanner accuracy on a synthetic labelled schema
 python -m smartmask.benchmark_saffron path/to/saffron_bank.db
