@@ -34,7 +34,7 @@ class SqliteAdapter(Adapter):
 
     def __init__(self, path: str):
         self.path = path
-        self.conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)
+        self.conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False, timeout=10)
         self.conn.create_function("sm_sha16", 1, _sha16, deterministic=True)
         self.conn.create_function("sm_scrub", 1, scrub_text, deterministic=True)
 
@@ -71,7 +71,9 @@ class PostgresAdapter(Adapter):
     def __init__(self, dsn: str):
         import psycopg
 
-        self.conn = psycopg.connect(dsn, autocommit=True, options="-c default_transaction_read_only=on")
+        self.conn = psycopg.connect(
+            dsn, autocommit=True, connect_timeout=10, options="-c default_transaction_read_only=on -c statement_timeout=30000"
+        )
         self._tables: dict[str, str] = {}
         self._columns: dict[tuple[str, str], str] = {}
 

@@ -12,6 +12,7 @@ Rules enforced:
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import time
 from dataclasses import dataclass, field
@@ -26,6 +27,8 @@ from .masks import SALT_TOKEN, mask_expression
 from .policy import Policy
 from .scanner import is_numeric_type, scan
 from .store import MetaStore
+
+log = logging.getLogger(__name__)
 
 
 class PolicyViolation(Exception):
@@ -68,6 +71,7 @@ class MaskingEngine:
             try:
                 self.run_scan()
             except Exception as e:
+                log.exception("schema scan failed; refusing to serve data")
                 raise PolicyViolation(f"Schema scan failed, refusing to serve unmasked data: {str(e).splitlines()[0]}")
         self._tags_ready = True
 
