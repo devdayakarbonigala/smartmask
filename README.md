@@ -98,6 +98,10 @@ column tagging, built so that AI can suggest but never decide:
   against the live API.
 * A suggestion changes nothing until a person approves it in the tab, which writes a manual override. Hashing and
   redaction stay in SQL and are never done by a model.
+* Optional automatic mode (a button with a confidence floor, default 85%): the AI may add masks to columns the rules left
+  open, but it never removes a mask, never overrides a rule, and every change is written to the audit log. A wrong
+  guess therefore over-masks and cannot expose data. The tab also lists, for every column, whether the AI says mask or
+  do not mask.
 
 Measured on the Saffron SQLite pack (`python -m smartmask.benchmark_ai <saffron_bank.db>`): the local model finds
 12 of 27 sensitive non-text columns, all with the right entity, and raises one false suggestion (a date column).

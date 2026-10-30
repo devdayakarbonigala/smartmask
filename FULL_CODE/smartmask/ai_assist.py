@@ -419,3 +419,33 @@ def approve(store, db_key: str, review: Review):
     if review.suggestion not in TAGS:
         raise ValueError("nothing to approve")
     store.set_override(db_key, review.table, review.column, review.suggestion)
+
+
+# ---- optional automatic mode -------------------------------------------------------------------
+AUTO_MIN_PROB = 0.85
+
+
+def decision(review: Review) -> tuple[str, str]:
+    """What the combined signals say about one column: ('MASK', entity) or ('DO NOT MASK', '')."""
+    entity = review.rules or review.suggestion or review.ml
+    return ("MASK", entity) if entity else ("DO NOT MASK", "")
+
+
+def auto_apply(store, db_key: str, reviews: list[Review], min_prob: float = AUTO_MIN_PROB) -> list[Review]:
+    """Let the AI add masks on its own, but only in the safe direction.
+
+    Applied: columns the rules left unmasked where the local model is at least `min_prob` sure (or the LLM
+    independently names the same entity). Never applied: conflicts with the rules, and anything that would
+    remove a mask. Each change is a normal override and gets an audit row.
+    """
+    applied = []
+    for r in reviews:
+        if r.verdict != "suggest" or r.suggestion not in TAGS:
+            continue
+        confident = (r.ml == r.suggestion and r.ml_prob >= min_prob) or (r.llm == r.suggestion and r.ml in (None, r.suggestion))
+        if not confident:
+            continue
+        store.set_override(db_key, r.table, r.column, r.suggestion)
+        store.audit(db_key, "ai-assist", "system", "auto-tag", "", "", f"{r.table}.{r.column}", 0, r.note)
+        applied.append(r)
+    return applied

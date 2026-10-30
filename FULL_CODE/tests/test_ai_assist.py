@@ -156,3 +156,43 @@ def test_llm_signal_is_used_only_for_disagreements(db, model):
 def test_branch_contact_details_are_not_suggested(model):
     rv = ai.review_column("branches", "branch_email", "TEXT", ["a@b.com", "c@d.org", "e@f.net"], None, model)
     assert rv.verdict == "clear"
+
+
+# ---- automatic mode ----------------------------------------------------------------------------
+def _rv(verdict, sug=None, ml=None, prob=0.0, llm=None, rules=None):
+    return ai.Review("t", "c", rules, ml, prob, llm, verdict, sug, "n")
+
+
+def test_auto_apply_adds_masks_only_when_confident(tmp_path):
+    store = MetaStore(str(tmp_path / "m.db"))
+    sure = _rv("suggest", "PAN", ml="PAN", prob=0.95)
+    unsure = ai.Review("t", "d", None, "PAN", 0.7, None, "suggest", "PAN", "n")
+    conflict = ai.Review("t", "e", "PHONE", "PAN", 0.99, None, "conflict", "PAN", "n")
+    done = ai.auto_apply(store, "k", [sure, unsure, conflict])
+    assert [r.column for r in done] == ["c"]
+    assert any("auto-tag" in str(row) for row in store.audit_rows(10))
+
+
+def test_auto_apply_never_removes_a_mask(tmp_path):
+    store = MetaStore(str(tmp_path / "m.db"))
+    removal = _rv("conflict", None, ml=None, prob=0.9, rules="EMAIL")
+    assert ai.auto_apply(store, "k", [removal]) == []
+
+
+def test_auto_applied_mask_changes_what_a_restricted_role_sees(db, model, tmp_path):
+    ad = SqliteAdapter(db)
+    store = MetaStore(str(tmp_path / "m.db"))
+    eng = MaskingEngine(ad, store, Policy(), "salt")
+    eng.run_scan()
+    reviews = ai.review_all(ad, {}, model)
+    sure = [r for r in reviews if r.column == "col_7"]
+    sure[0].ml_prob = 1.0
+    assert ai.auto_apply(store, eng.db_key, sure)
+    raw = eng.execute("admin", "SELECT col_7 FROM t LIMIT 1").rows[0][0]
+    masked = eng.execute("analyst", "SELECT col_7 FROM t LIMIT 1").rows[0][0]
+    assert raw in PANS and masked != raw
+
+
+def test_decision_reports_mask_or_do_not_mask():
+    assert ai.decision(_rv("suggest", "PAN", ml="PAN", prob=0.9)) == ("MASK", "PAN")
+    assert ai.decision(_rv("clear")) == ("DO NOT MASK", "")

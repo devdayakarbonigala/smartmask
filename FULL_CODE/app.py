@@ -144,6 +144,37 @@ with tab_ai:
             st.session_state["ai_reviews"] = ai_assist.review_all(eng.adapter, eng.store.load_tags(eng.db_key), use_llm=use_llm)
     reviews = st.session_state.get("ai_reviews")
     if reviews:
+        st.subheader("What the AI decides for every column")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "table": r.table,
+                        "column": r.column,
+                        "decision": ai_assist.decision(r)[0],
+                        "entity": ai_assist.decision(r)[1],
+                        "rules": r.rules or "-",
+                        "local model": f"{r.ml or '-'} ({r.ml_prob:.0%})",
+                        "verdict": r.verdict,
+                    }
+                    for r in reviews
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.subheader("Automatic mode")
+        floor = st.slider("Minimum confidence to add a mask on its own", 0.5, 0.99, ai_assist.AUTO_MIN_PROB, 0.01, key="ai_floor")
+        st.caption(
+            "Only adds masks. It never removes one and never overrides a rule. Every change is a normal override and is written to the audit log."
+        )
+        if st.button("Apply confident additions", key="ai_auto"):
+            done = ai_assist.auto_apply(eng.store, eng.db_key, reviews, floor)
+            st.success(
+                f"Added {len(done)} mask(s): "
+                + (", ".join(f"{r.table}.{r.column} as {r.suggestion}" for r in done) or "none above the confidence floor")
+            )
+        st.subheader("Needs a human decision")
         counts = pd.Series([r.verdict for r in reviews]).value_counts()
         st.write("Verdicts: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
         queue = [r for r in reviews if r.needs_review]
