@@ -6,7 +6,7 @@ import json
 import pandas as pd
 import streamlit as st
 
-from smartmask import ai_assist, benchmark, config
+from smartmask import ai_assist, benchmark, compliance, config
 from smartmask.adapters import PostgresAdapter, SqliteAdapter
 from smartmask.engine import MaskingEngine, PolicyViolation
 from smartmask.policy import Policy
@@ -155,6 +155,8 @@ with tab_ai:
                         "entity": ai_assist.decision(r)[1],
                         "rules": r.rules or "-",
                         "local model": f"{r.ml or '-'} ({r.ml_prob:.0%})",
+                        "GDPR": compliance.regulation(ai_assist.decision(r)[1])[0],
+                        "HIPAA identifier": compliance.regulation(ai_assist.decision(r)[1])[1],
                         "verdict": r.verdict,
                     }
                     for r in reviews
@@ -173,6 +175,17 @@ with tab_ai:
             st.success(
                 f"Added {len(done)} mask(s): "
                 + (", ".join(f"{r.table}.{r.column} as {r.suggestion}" for r in done) or "none above the confidence floor")
+            )
+        with st.expander("How each entity maps to GDPR and HIPAA"):
+            st.dataframe(
+                pd.DataFrame([{"entity": k, "GDPR": v[0], "HIPAA identifier": v[1]} for k, v in compliance.MAPPING.items()]),
+                use_container_width=True,
+                hide_index=True,
+            )
+            st.caption(
+                "Alignment table for reviewers, not legal advice or certification. Not implemented because the Saffron data has none: "
+                + compliance.NOT_IMPLEMENTED
+                + "."
             )
         st.subheader("Needs a human decision")
         counts = pd.Series([r.verdict for r in reviews]).value_counts()

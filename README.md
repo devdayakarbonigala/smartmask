@@ -109,6 +109,14 @@ The rules already find all 35 labelled columns there, so on this pack the model 
 on names, addresses and balances because their shapes vary. Its use is cryptically named columns with a distinctive
 shape (PAN, card, email). The generators were tuned after seeing Saffron results, so treat the numbers as optimistic.
 
+## GDPR and HIPAA alignment
+
+`smartmask/compliance.py` maps every entity SmartMask knows to a GDPR category and to one of the 18 HIPAA identifiers
+(45 CFR 164.514(b)(2)(i)); the AI Assist tab shows the mapping next to each column's decision. Hash tokens are
+pseudonymisation in GDPR terms, not anonymisation. Identifiers that the Saffron data does not contain (IP address,
+medical record number, health plan number, device ID, biometrics) are not implemented. This is an alignment aid, not
+legal advice or a certification. ZIP codes are a HIPAA geography identifier and are currently not masked (see Limitations).
+
 ## AI usage
 
 This project was built with the help of an AI coding assistant (Claude). The idea selection, review, testing and

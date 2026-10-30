@@ -196,3 +196,14 @@ def test_auto_applied_mask_changes_what_a_restricted_role_sees(db, model, tmp_pa
 def test_decision_reports_mask_or_do_not_mask():
     assert ai.decision(_rv("suggest", "PAN", ml="PAN", prob=0.9)) == ("MASK", "PAN")
     assert ai.decision(_rv("clear")) == ("DO NOT MASK", "")
+
+
+# ---- compliance mapping ------------------------------------------------------------------------
+def test_every_entity_has_a_gdpr_and_hipaa_mapping():
+    from smartmask import compliance
+    from smartmask.scanner import TAGS
+
+    assert set(compliance.MAPPING) == set(TAGS)
+    assert all(g and h for g, h in compliance.MAPPING.values())
+    assert compliance.regulation("SSN")[1].startswith("G")
+    assert compliance.regulation(None) == ("-", "-")
