@@ -25,7 +25,6 @@ h1, h2, h3 {{ letter-spacing: 0.01em; }}
 .sm-title {{ font-family: Georgia, serif; font-size: 3rem; line-height: 1.05; margin: 0 0 .2rem 0; color: {INK}; }}
 .sm-rule {{ border: 0; border-top: 3px double {INK}; margin: .4rem 0 .8rem 0; }}
 .sm-sub {{ font-size: 1.05rem; color: {INK}; margin-bottom: 1rem; }}
-.sm-bar {{ background: {INK}; color: {INK}; padding: 0 .35rem; user-select: none; }}
 .sm-chip {{ display: inline-block; padding: .05rem .55rem; margin: 0 .35rem .25rem 0; font-size: .82rem; border: 1px solid {INK}; }}
 .sm-ledger {{ display: flex; height: 22px; border: 1px solid {INK}; margin: .15rem 0 .1rem 0; }}
 .sm-ledger span {{ display: block; height: 100%; border-right: 1px solid {PAPER}; }}
@@ -101,5 +100,5 @@ def title_html() -> str:
     return (
         '<div class="sm-title">SmartMask</div><hr class="sm-rule">'
         '<div class="sm-sub">Role-based data masking, applied inside the query. '
-        'Stored tables are never <span class="sm-bar">modified</span>.</div>'
+        "Stored tables are never modified.</div>"
     )
