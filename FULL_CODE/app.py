@@ -186,8 +186,6 @@ if is_admin:
             use_llm = st.checkbox(
                 "Also ask the language model about disagreements (sends names and shapes, never values)", key="ai_llm"
             )
-        else:
-            st.caption("Language model off (no ANTHROPIC_API_KEY set). The local model runs without any network.")
         if st.button("Run AI review", key="ai_run"):
             with st.spinner("Reviewing columns"):
                 st.session_state["ai_reviews"] = ai_assist.review_all(
