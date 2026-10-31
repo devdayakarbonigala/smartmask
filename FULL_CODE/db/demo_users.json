@@ -1,0 +1,16 @@
+{
+  "users": {
+    "admin": {
+      "role": "admin",
+      "password": "85f78fa621b59d369adbab4ff84735d5$0ea1b6cbd1917efb1392a4f4df32e661fbe1a8f0ea151ef6bfc3eada16fb47df"
+    },
+    "support": {
+      "role": "support",
+      "password": "30e9f48639844b3c5c600ac4dfc6c3cf$842cda33745c2b54b3b13312ac15aeadec65a572e1cd2190729d8aa467321618"
+    },
+    "analyst": {
+      "role": "analyst",
+      "password": "aa7ef6e83b137e23647d59d72831928b$b9659acd2adfc0cd80a6f4c37b906ab8151968397951cbb6d8b0703a2fa9852e"
+    }
+  }
+}
